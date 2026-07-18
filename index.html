@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#e0487f">
+<title>fave — 推し活記録</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <span id="header-oshi-emoji">💖</span>
+  <span id="header-title">fave</span>
+</header>
+
+<main>
+
+  <!-- ホーム画面 -->
+  <section class="view active" id="view-home">
+
+    <div class="card hero-card">
+      <p class="hero-label" id="hero-label">今月、推しに使えた額</p>
+      <p class="hero-amount"><span id="hero-amount">¥0</span></p>
+      <p class="hero-sub" id="hero-sub">今月の記録 0回</p>
+    </div>
+
+    <div class="card" id="budget-card">
+      <div class="card-title-row">
+        <h2>今月の軍資金</h2>
+        <span class="card-title-note" id="budget-total-label"></span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="budget-bar"></div></div>
+      <p class="budget-message" id="budget-message"></p>
+    </div>
+
+    <div class="card total-card">
+      <div class="total-row">
+        <div>
+          <p class="total-label">これまでの愛の総額</p>
+          <p class="total-amount" id="total-amount">¥0</p>
+        </div>
+        <div>
+          <p class="total-label">推し活記録</p>
+          <p class="total-amount small" id="total-count">0回</p>
+        </div>
+      </div>
+      <button class="year-open-btn" id="year-open-btn">🎊 年間まとめを見る</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title-row">
+        <h2>マイルストーン</h2>
+      </div>
+      <div class="badges" id="badges"></div>
+      <p class="next-milestone" id="next-milestone"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-title-row">
+        <h2>月別の推し活</h2>
+        <span class="card-title-note">直近6ヶ月</span>
+      </div>
+      <div class="chart" id="chart"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title-row">
+        <h2>最近の記録</h2>
+      </div>
+      <ul class="record-list" id="recent-list"></ul>
+      <p class="empty-note" id="recent-empty" hidden>まだ記録がありません。「きろく」から最初の推し活を記録しましょう!</p>
+    </div>
+
+  </section>
+
+  <!-- 年間まとめ画面 -->
+  <section class="view" id="view-year">
+    <div class="card">
+      <div class="month-nav">
+        <button class="month-btn" id="year-prev">◀</button>
+        <div class="month-label-wrap">
+          <p class="month-label" id="year-label"></p>
+        </div>
+        <button class="month-btn" id="year-next">▶</button>
+      </div>
+    </div>
+
+    <div id="year-content">
+      <div class="card hero-card">
+        <p class="hero-label" id="year-hero-label">今年、推しに使えた愛</p>
+        <p class="hero-amount"><span id="year-total">¥0</span></p>
+        <p class="hero-sub" id="year-sub"></p>
+      </div>
+
+      <div class="card">
+        <div class="card-title-row">
+          <h2>月別の推し活</h2>
+          <span class="card-title-note" id="year-chart-note"></span>
+        </div>
+        <div class="chart chart-12" id="year-chart"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title-row">
+          <h2>カテゴリ内訳</h2>
+        </div>
+        <div id="year-cats"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title-row">
+          <h2>今年のハイライト</h2>
+        </div>
+        <ul class="highlight-list" id="year-highlights"></ul>
+      </div>
+    </div>
+
+    <div class="card" id="year-empty" hidden>
+      <p class="empty-note">この年の記録はまだありません。</p>
+    </div>
+
+    <button class="ghost-btn" id="year-back-btn">ホームにもどる</button>
+  </section>
+
+  <!-- 記録画面 -->
+  <section class="view" id="view-add">
+    <div class="card">
+      <h2 id="add-title">推し活を記録する</h2>
+
+      <label class="field-label" for="input-amount">金額</label>
+      <div class="amount-input-wrap">
+        <span class="yen-mark">¥</span>
+        <input type="number" id="input-amount" inputmode="numeric" min="1" placeholder="0">
+      </div>
+
+      <label class="field-label">カテゴリ</label>
+      <div class="cat-chips" id="cat-chips"></div>
+
+      <label class="field-label" for="input-date">日付</label>
+      <input type="date" id="input-date">
+
+      <label class="field-label" for="input-memo">メモ(任意)</label>
+      <input type="text" id="input-memo" placeholder="例: アクスタ2個、チェキ会">
+
+      <button class="primary-btn" id="save-btn">推しに愛を記録する 💖</button>
+      <button class="ghost-btn" id="cancel-edit-btn" hidden>編集をやめる</button>
+    </div>
+  </section>
+
+  <!-- 履歴画面 -->
+  <section class="view" id="view-history">
+    <div class="card">
+      <div class="month-nav">
+        <button class="month-btn" id="month-prev">◀</button>
+        <div class="month-label-wrap">
+          <p class="month-label" id="month-label"></p>
+          <p class="month-total" id="month-total"></p>
+        </div>
+        <button class="month-btn" id="month-next">▶</button>
+      </div>
+      <ul class="record-list" id="history-list"></ul>
+      <p class="empty-note" id="history-empty" hidden>この月の記録はありません</p>
+    </div>
+  </section>
+
+  <!-- 設定画面 -->
+  <section class="view" id="view-settings">
+    <div class="card">
+      <h2>推しの設定</h2>
+      <label class="field-label" for="set-oshi-name">推しの名前</label>
+      <input type="text" id="set-oshi-name" placeholder="例: ○○ちゃん">
+      <label class="field-label" for="set-oshi-emoji">推しの絵文字</label>
+      <input type="text" id="set-oshi-emoji" placeholder="💖" maxlength="4">
+      <label class="field-label" for="set-oshi-color">テーマカラー(推し色)</label>
+      <input type="color" id="set-oshi-color" value="#e0487f">
+    </div>
+
+    <div class="card">
+      <h2>軍資金</h2>
+      <p class="help-text">毎月「ここまでは罪悪感ゼロで使っていい」と決める金額です。0にすると軍資金なしになります。</p>
+      <label class="field-label" for="set-budget">毎月の軍資金(円)</label>
+      <input type="number" id="set-budget" inputmode="numeric" min="0" placeholder="例: 20000">
+    </div>
+
+    <div class="card">
+      <button class="primary-btn" id="settings-save-btn">設定を保存する</button>
+    </div>
+
+    <div class="card">
+      <h2>データのバックアップ</h2>
+      <p class="help-text">データはこの端末のブラウザ内だけに保存されています。ときどき書き出してバックアップしておくと安心です。</p>
+      <button class="ghost-btn" id="export-btn">データを書き出す(保存)</button>
+      <button class="ghost-btn" id="import-btn">データを読み込む(復元)</button>
+      <input type="file" id="import-file" accept=".json" hidden>
+      <button class="danger-btn" id="clear-btn">全データを削除する</button>
+    </div>
+  </section>
+
+</main>
+
+<!-- 下部ナビゲーション -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-view="view-home"><span>🏠</span>ホーム</button>
+  <button class="nav-btn" data-view="view-add"><span>➕</span>きろく</button>
+  <button class="nav-btn" data-view="view-history"><span>📖</span>りれき</button>
+  <button class="nav-btn" data-view="view-settings"><span>⚙️</span>せってい</button>
+</nav>
+
+<div id="toast" hidden></div>
+<div id="chart-tooltip" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

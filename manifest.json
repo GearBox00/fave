@@ -1,0 +1,16 @@
+{
+  "name": "fave — 推し活記録",
+  "short_name": "fave",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fff5f8",
+  "theme_color": "#e0487f",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
