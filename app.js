@@ -34,7 +34,13 @@ function defaultData() {
     oshi: { name: "", emoji: "💖", color: "#e0487f" },
     budget: 0,          // 毎月の軍資金(0 = 未設定)
     records: [],        // { id, date: "YYYY-MM-DD", amount, cat, memo }
+    events: [],         // 記念日 { id, label, date: "YYYY-MM-DD", repeat: true/false }
+    recurring: [],      // 定期支出 { id, label, amount, cat, lastApplied: "YYYY-MM" }
   };
+}
+
+function newId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
 function loadData() {
@@ -168,7 +174,305 @@ function renderHome() {
   renderBadges();
   renderChart();
   renderRecent();
+  renderEvents();
 }
+
+// ---------- 記念日カウントダウン ----------
+
+// 次の記念日までの日数を計算する(毎年くりかえす場合は次の同じ日付)
+function daysUntilEvent(ev) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const [y, m, d] = ev.date.split("-").map(Number);
+  let target = ev.repeat ? new Date(today.getFullYear(), m - 1, d) : new Date(y, m - 1, d);
+  if (ev.repeat && target < today) target = new Date(today.getFullYear() + 1, m - 1, d);
+  return Math.round((target - today) / 86400000);
+}
+
+function renderEvents() {
+  const card = document.getElementById("events-card");
+  const list = document.getElementById("event-list");
+  const upcoming = data.events
+    .map((ev) => ({ ev, days: daysUntilEvent(ev) }))
+    .filter((x) => x.days >= 0)          // 過ぎた一回きりの記念日は表示しない
+    .sort((a, b) => a.days - b.days)
+    .slice(0, 3);
+
+  card.hidden = upcoming.length === 0;
+  list.innerHTML = "";
+  upcoming.forEach(({ ev, days }) => {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = ev.label;
+    const right = document.createElement("span");
+    right.className = "event-days" + (days === 0 ? " today" : "");
+    right.textContent = days === 0 ? "今日🎉" : `あと${days}日`;
+    li.appendChild(label);
+    li.appendChild(right);
+    list.appendChild(li);
+  });
+}
+
+function renderEventManage() {
+  const list = document.getElementById("event-manage-list");
+  list.innerHTML = "";
+  data.events.forEach((ev) => {
+    const li = document.createElement("li");
+    const main = document.createElement("span");
+    main.className = "manage-main";
+    main.textContent = ev.label;
+    const sub = document.createElement("span");
+    sub.className = "manage-sub";
+    sub.textContent = ev.date.replaceAll("-", "/") + (ev.repeat ? "(毎年)" : "");
+    const del = document.createElement("button");
+    del.className = "icon-btn";
+    del.textContent = "🗑️";
+    del.addEventListener("click", () => {
+      if (!confirm(`「${ev.label}」を削除しますか?`)) return;
+      data.events = data.events.filter((x) => x.id !== ev.id);
+      saveData();
+      renderEventManage();
+      showToast("記念日を削除しました");
+    });
+    li.appendChild(main);
+    li.appendChild(sub);
+    li.appendChild(del);
+    list.appendChild(li);
+  });
+}
+
+document.getElementById("event-add-btn").addEventListener("click", () => {
+  const label = document.getElementById("event-label").value.trim();
+  const date = document.getElementById("event-date").value;
+  if (!label || !date) { showToast("名前と日付を入力してください"); return; }
+  data.events.push({ id: newId(), label, date, repeat: document.getElementById("event-repeat").checked });
+  saveData();
+  document.getElementById("event-label").value = "";
+  document.getElementById("event-date").value = "";
+  renderEventManage();
+  showToast("記念日を追加しました 🗓️");
+});
+
+// ---------- 定期支出(毎月自動で記録) ----------
+
+function prevMonthKey(key) {
+  const [y, m] = key.split("-").map(Number);
+  return monthKey(new Date(y, m - 2, 1));
+}
+
+function nextMonthKey(key) {
+  const [y, m] = key.split("-").map(Number);
+  return monthKey(new Date(y, m, 1));
+}
+
+// アプリを開いたとき、まだ記録していない月の分をまとめて記録する
+function applyRecurring() {
+  const current = monthKey(new Date());
+  let added = 0;
+  data.recurring.forEach((item) => {
+    while (item.lastApplied < current) {
+      item.lastApplied = nextMonthKey(item.lastApplied);
+      data.records.push({
+        id: newId(),
+        date: item.lastApplied + "-01",
+        amount: item.amount,
+        cat: item.cat,
+        memo: item.label + "(定期)",
+      });
+      added++;
+    }
+  });
+  if (added > 0) {
+    saveData();
+    showToast(`定期支出を${added}件記録しました 📅`, 3000);
+  }
+}
+
+function renderRecurringManage() {
+  const list = document.getElementById("recurring-manage-list");
+  list.innerHTML = "";
+  data.recurring.forEach((item) => {
+    const li = document.createElement("li");
+    const main = document.createElement("span");
+    main.className = "manage-main";
+    main.textContent = `${catById(item.cat).emoji} ${item.label}`;
+    const sub = document.createElement("span");
+    sub.className = "manage-sub";
+    sub.textContent = `毎月 ${yen(item.amount)}`;
+    const del = document.createElement("button");
+    del.className = "icon-btn";
+    del.textContent = "🗑️";
+    del.addEventListener("click", () => {
+      if (!confirm(`「${item.label}」の定期支出をやめますか?(記録済みの分は残ります)`)) return;
+      data.recurring = data.recurring.filter((x) => x.id !== item.id);
+      saveData();
+      renderRecurringManage();
+      showToast("定期支出を削除しました");
+    });
+    li.appendChild(main);
+    li.appendChild(sub);
+    li.appendChild(del);
+    list.appendChild(li);
+  });
+}
+
+document.getElementById("rec-add-btn").addEventListener("click", () => {
+  const label = document.getElementById("rec-label").value.trim();
+  const amount = Math.floor(Number(document.getElementById("rec-amount").value));
+  if (!label || !amount || amount <= 0) { showToast("名前と金額を入力してください"); return; }
+  data.recurring.push({
+    id: newId(),
+    label,
+    amount,
+    cat: document.getElementById("rec-cat").value,
+    lastApplied: prevMonthKey(monthKey(new Date())), // 今月の分がすぐ記録される
+  });
+  applyRecurring();
+  saveData();
+  document.getElementById("rec-label").value = "";
+  document.getElementById("rec-amount").value = "";
+  renderRecurringManage();
+});
+
+// ---------- まとめ画像(シェア用) ----------
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// まとめ画像を描いてcanvasを返す
+function buildSummaryCanvas({ title, amount, lines }) {
+  const W = 1080, H = 1350;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  const accent = data.oshi.color;
+  const font = '"Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif';
+
+  // 背景(推し色のうすい色)
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 0.10;
+  ctx.fillStyle = accent;
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 1;
+
+  // 白いカード
+  roundRect(ctx, 60, 60, W - 120, H - 120, 48);
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = "rgba(120,60,90,0.18)";
+  ctx.shadowBlur = 40;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.textAlign = "center";
+
+  // 推しの絵文字
+  ctx.font = `140px ${font}`;
+  ctx.fillText(data.oshi.emoji || "💖", W / 2, 330);
+
+  // タイトル
+  ctx.fillStyle = "#7a6c74";
+  ctx.font = `bold 46px ${font}`;
+  ctx.fillText(title, W / 2, 470);
+
+  // 金額
+  ctx.fillStyle = accent;
+  ctx.font = `800 150px ${font}`;
+  ctx.fillText(amount, W / 2, 660);
+
+  // 区切り線
+  ctx.strokeStyle = "rgba(0,0,0,0.08)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(240, 740);
+  ctx.lineTo(W - 240, 740);
+  ctx.stroke();
+
+  // サブ情報
+  ctx.fillStyle = "#3a3038";
+  ctx.font = `bold 44px ${font}`;
+  lines.forEach((line, i) => {
+    ctx.fillText(line, W / 2, 850 + i * 90);
+  });
+
+  // フッター
+  ctx.fillStyle = "#a898a0";
+  ctx.font = `bold 34px ${font}`;
+  ctx.fillText("fave — 推し活記録", W / 2, H - 130);
+
+  return canvas;
+}
+
+// 画像を共有(スマホ)またはダウンロード(PC)する
+function shareCanvas(canvas, filename) {
+  canvas.toBlob((blob) => {
+    if (!blob) { showToast("画像を作れませんでした"); return; }
+    const file = new File([blob], filename, { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file] }).catch(() => {}); // キャンセルは無視
+    } else {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showToast("まとめ画像を保存しました 📸");
+    }
+  }, "image/png");
+}
+
+document.getElementById("share-month-btn").addEventListener("click", () => {
+  const now = new Date();
+  const key = monthKey(now);
+  const records = recordsInMonth(key);
+  const lines = [`記録 ${records.length}回`];
+  if (records.length) {
+    const byCat = {};
+    records.forEach((r) => { byCat[r.cat] = (byCat[r.cat] || 0) + r.amount; });
+    const top = catById(Object.entries(byCat).sort((a, b) => b[1] - a[1])[0][0]);
+    lines.push(`いちばんは ${top.emoji} ${top.label}`);
+  }
+  const canvas = buildSummaryCanvas({
+    title: data.oshi.name
+      ? `${now.getFullYear()}年${now.getMonth() + 1}月、${data.oshi.name}に使えた額`
+      : `${now.getFullYear()}年${now.getMonth() + 1}月、推しに使えた額`,
+    amount: yen(sumAmount(records)),
+    lines,
+  });
+  shareCanvas(canvas, `fave-${key}.png`);
+});
+
+document.getElementById("share-year-btn").addEventListener("click", () => {
+  const records = data.records.filter((r) => r.date.startsWith(viewYear + "-"));
+  const lines = [`記録 ${records.length}回`];
+  if (records.length) {
+    const byMonth = {};
+    records.forEach((r) => {
+      const m = Number(r.date.slice(5, 7));
+      byMonth[m] = (byMonth[m] || 0) + r.amount;
+    });
+    const topMonth = Object.entries(byMonth).sort((a, b) => b[1] - a[1])[0];
+    lines.push(`いちばん推した月は ${topMonth[0]}月`);
+    const byCat = {};
+    records.forEach((r) => { byCat[r.cat] = (byCat[r.cat] || 0) + r.amount; });
+    const topCat = catById(Object.entries(byCat).sort((a, b) => b[1] - a[1])[0][0]);
+    lines.push(`いちばんは ${topCat.emoji} ${topCat.label}`);
+  }
+  const canvas = buildSummaryCanvas({
+    title: data.oshi.name ? `${viewYear}年、${data.oshi.name}に使えた愛` : `${viewYear}年、推しに使えた愛`,
+    amount: yen(sumAmount(records)),
+    lines,
+  });
+  shareCanvas(canvas, `fave-${viewYear}.png`);
+});
 
 function renderBadges() {
   const total = totalAll();
@@ -600,6 +904,20 @@ function renderSettings() {
   document.getElementById("set-oshi-emoji").value = data.oshi.emoji;
   document.getElementById("set-oshi-color").value = data.oshi.color;
   document.getElementById("set-budget").value = data.budget || "";
+  renderEventManage();
+  renderRecurringManage();
+}
+
+// 定期支出のカテゴリ選択肢を用意する
+function buildRecCatOptions() {
+  const sel = document.getElementById("rec-cat");
+  sel.innerHTML = "";
+  CATEGORIES.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = `${c.emoji} ${c.label}`;
+    sel.appendChild(opt);
+  });
 }
 
 document.getElementById("settings-save-btn").addEventListener("click", () => {
@@ -693,7 +1011,9 @@ function launchConfetti() {
 
 applyTheme();
 buildCatChips();
+buildRecCatOptions();
 resetAddForm();
+applyRecurring(); // 月が変わっていたら定期支出を記録
 renderHome();
 
 // オフライン対応(Service Worker)。対応ブラウザでのみ登録する

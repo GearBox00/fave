@@ -25,6 +25,14 @@
       <p class="hero-label" id="hero-label">今月、推しに使えた額</p>
       <p class="hero-amount"><span id="hero-amount">¥0</span></p>
       <p class="hero-sub" id="hero-sub">今月の記録 0回</p>
+      <button class="share-btn" id="share-month-btn">📸 今月のまとめ画像</button>
+    </div>
+
+    <div class="card" id="events-card" hidden>
+      <div class="card-title-row">
+        <h2>カウントダウン</h2>
+      </div>
+      <ul class="event-list" id="event-list"></ul>
     </div>
 
     <div class="card" id="budget-card">
@@ -122,6 +130,7 @@
       <p class="empty-note">この年の記録はまだありません。</p>
     </div>
 
+    <button class="primary-btn" id="share-year-btn" style="margin-top:0">📸 まとめ画像を作る</button>
     <button class="ghost-btn" id="year-back-btn">ホームにもどる</button>
   </section>
 
@@ -187,6 +196,31 @@
 
     <div class="card">
       <button class="primary-btn" id="settings-save-btn">設定を保存する</button>
+    </div>
+
+    <div class="card">
+      <h2>記念日カウントダウン</h2>
+      <p class="help-text">推しの誕生日やライブの日を登録すると、ホームに「あと○日」と表示されます。</p>
+      <ul class="manage-list" id="event-manage-list"></ul>
+      <label class="field-label" for="event-label">名前(絵文字も使えます)</label>
+      <input type="text" id="event-label" placeholder="例: 🎂 推しの誕生日、🎫 ライブ">
+      <label class="field-label" for="event-date">日付</label>
+      <input type="date" id="event-date">
+      <label class="check-label"><input type="checkbox" id="event-repeat" checked> 毎年くりかえす(誕生日など)</label>
+      <button class="ghost-btn" id="event-add-btn">記念日を追加する</button>
+    </div>
+
+    <div class="card">
+      <h2>定期支出(毎月自動で記録)</h2>
+      <p class="help-text">ファンクラブ会費など毎月決まった支出を登録すると、月が変わったときに自動で記録されます(登録した月の分もすぐ記録されます)。</p>
+      <ul class="manage-list" id="recurring-manage-list"></ul>
+      <label class="field-label" for="rec-label">名前</label>
+      <input type="text" id="rec-label" placeholder="例: ファンクラブ会費">
+      <label class="field-label" for="rec-amount">金額(円)</label>
+      <input type="number" id="rec-amount" inputmode="numeric" min="1" placeholder="例: 500">
+      <label class="field-label" for="rec-cat">カテゴリ</label>
+      <select id="rec-cat"></select>
+      <button class="ghost-btn" id="rec-add-btn">定期支出を追加する</button>
     </div>
 
     <div class="card">
