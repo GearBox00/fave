@@ -695,3 +695,10 @@ applyTheme();
 buildCatChips();
 resetAddForm();
 renderHome();
+
+// オフライン対応(Service Worker)。対応ブラウザでのみ登録する
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js").catch(() => {
+    // 登録に失敗してもアプリ自体は普通に使える
+  });
+}

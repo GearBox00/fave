@@ -26,4 +26,6 @@
 - **公開済み**: https://gearbox00.github.io/fave/ (GitHub Pages)
   - リポジトリ: https://github.com/GearBox00/fave (公開リポジトリ)
   - 更新手順: このフォルダで変更をコミットして `git push` すれば数分で反映される
-- Service Worker(オフライン対応)は未実装
+- Service Worker(`sw.js`)でオフライン対応済み(stale-while-revalidate方式)。
+  変更の反映は「次に開いたとき」なので、開発中は2回リロードが必要な場合がある。
+  ファイルを追加したら `sw.js` の APP_SHELL にも追記すること
