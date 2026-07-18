@@ -23,5 +23,7 @@
 
 - グラフ・数字の濃いピンク `#e0487f` は白背景でのコントラスト検証済み。
   明るすぎる色(例 `#ff6b9a`)はグラフの棒には使わない
-- スマホで実際に使うにはどこかへの公開(GitHub Pages等)が必要。未対応
+- **公開済み**: https://gearbox00.github.io/fave/ (GitHub Pages)
+  - リポジトリ: https://github.com/GearBox00/fave (公開リポジトリ)
+  - 更新手順: このフォルダで変更をコミットして `git push` すれば数分で反映される
 - Service Worker(オフライン対応)は未実装
