@@ -33,9 +33,10 @@ function defaultData() {
   return {
     oshi: { name: "", emoji: "💖", color: "#e0487f" },
     budget: 0,          // 毎月の軍資金(0 = 未設定)
-    records: [],        // { id, date: "YYYY-MM-DD", amount, cat, memo }
+    records: [],        // { id, date: "YYYY-MM-DD", amount, cat, memo, photo: true/false }
     events: [],         // 記念日 { id, label, date: "YYYY-MM-DD", repeat: true/false }
     recurring: [],      // 定期支出 { id, label, amount, cat, lastApplied: "YYYY-MM" }
+    goals: [],          // 目標貯金 { id, label, target, saved }
   };
 }
 
@@ -63,6 +64,102 @@ let editingId = null;                 // 編集中の記録ID(nullなら新規)
 let viewMonth = monthKey(new Date()); // 履歴画面で表示中の月
 let viewYear = new Date().getFullYear(); // 年間まとめで表示中の年
 
+// ---------- 写真の保存(IndexedDB) ----------
+// 写真は容量が大きいので、localStorageではなくIndexedDBに保存する。
+// 記録(record)には photo:true のフラグだけ持たせ、実データはここで record.id をキーに管理する。
+
+const PHOTO_DB = "fave-photos";
+const PHOTO_STORE = "photos";
+let photoDbPromise = null;
+
+function openPhotoDb() {
+  if (photoDbPromise) return photoDbPromise;
+  photoDbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(PHOTO_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(PHOTO_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return photoDbPromise;
+}
+
+function photoTx(mode) {
+  return openPhotoDb().then((db) => db.transaction(PHOTO_STORE, mode).objectStore(PHOTO_STORE));
+}
+
+async function savePhoto(id, dataUrl) {
+  const store = await photoTx("readwrite");
+  return new Promise((resolve, reject) => {
+    const req = store.put(dataUrl, id);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function getPhoto(id) {
+  try {
+    const store = await photoTx("readonly");
+    return await new Promise((resolve) => {
+      const req = store.get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+async function deletePhoto(id) {
+  try {
+    const store = await photoTx("readwrite");
+    store.delete(id);
+  } catch (e) { /* 失敗しても致命的ではない */ }
+}
+
+// バックアップ用: 記録に紐づく写真をすべて取り出す { id: dataURL }
+async function getAllPhotos() {
+  const out = {};
+  for (const r of data.records) {
+    if (r.photo) {
+      const dataUrl = await getPhoto(r.id);
+      if (dataUrl) out[r.id] = dataUrl;
+    }
+  }
+  return out;
+}
+
+// すべての写真を削除する
+async function clearAllPhotos() {
+  try {
+    const store = await photoTx("readwrite");
+    store.clear();
+  } catch (e) { /* 失敗しても致命的ではない */ }
+}
+
+// 選択された画像を縮小してJPEG(dataURL)にする。容量を抑えるため長辺1200pxに。
+function fileToDataUrl(file, maxSide = 1200, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxSide || height > maxSide) {
+        const scale = maxSide / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("画像を読み込めませんでした")); };
+    img.src = url;
+  });
+}
+
 // ---------- 日付・金額ヘルパー ----------
 
 function monthKey(d) {
@@ -76,6 +173,12 @@ function todayStr() {
 
 function yen(n) {
   return "¥" + n.toLocaleString("ja-JP");
+}
+
+// innerHTMLに入れる文字列を安全にする(記号が混ざっても崩れないように)
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 function yenShort(n) {
@@ -175,7 +278,113 @@ function renderHome() {
   renderChart();
   renderRecent();
   renderEvents();
+  renderGoals();
 }
+
+// ---------- 目標貯金 ----------
+
+function renderGoals() {
+  const card = document.getElementById("goals-card");
+  const wrap = document.getElementById("goal-list");
+  card.hidden = data.goals.length === 0;
+  wrap.innerHTML = "";
+  data.goals.forEach((g) => {
+    const pct = g.target > 0 ? Math.min(100, (g.saved / g.target) * 100) : 0;
+    const done = g.saved >= g.target;
+    const item = document.createElement("div");
+    item.className = "goal-item";
+    item.innerHTML =
+      `<div class="goal-top">` +
+        `<span class="goal-name">${escapeHtml(g.label)}</span>` +
+        `<span class="goal-figures">${yen(g.saved)}<span class="goal-target"> / ${yen(g.target)}</span></span>` +
+      `</div>` +
+      `<div class="goal-bottom">` +
+        `<div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>` +
+        (done
+          ? `<span class="goal-done-mark">達成🎉</span>`
+          : `<button class="goal-deposit-btn" data-goal="${g.id}">貯金する</button>`) +
+      `</div>`;
+    wrap.appendChild(item);
+  });
+  wrap.querySelectorAll(".goal-deposit-btn").forEach((btn) => {
+    btn.addEventListener("click", () => openDeposit(btn.dataset.goal));
+  });
+}
+
+let depositGoalId = null;
+
+function openDeposit(id) {
+  const g = data.goals.find((x) => x.id === id);
+  if (!g) return;
+  depositGoalId = id;
+  document.getElementById("deposit-title").textContent = g.label;
+  document.getElementById("deposit-progress").textContent =
+    `いま ${yen(g.saved)} / 目標 ${yen(g.target)}(あと ${yen(Math.max(0, g.target - g.saved))})`;
+  document.getElementById("deposit-amount").value = "";
+  document.getElementById("deposit-modal").hidden = false;
+}
+
+document.getElementById("deposit-cancel-btn").addEventListener("click", () => {
+  document.getElementById("deposit-modal").hidden = true;
+});
+
+document.getElementById("deposit-save-btn").addEventListener("click", () => {
+  const g = data.goals.find((x) => x.id === depositGoalId);
+  if (!g) return;
+  const amount = Math.floor(Number(document.getElementById("deposit-amount").value));
+  if (!amount || amount <= 0) { showToast("金額を入力してください"); return; }
+  const wasDone = g.saved >= g.target;
+  g.saved += amount;
+  saveData();
+  document.getElementById("deposit-modal").hidden = true;
+  renderGoals();
+  if (!wasDone && g.saved >= g.target) {
+    launchConfetti();
+    showToast(`🎉 目標達成!「${g.label}」`, 3200);
+  } else {
+    showToast(`+${yen(amount)} 貯金しました 🐷`);
+  }
+});
+
+function renderGoalManage() {
+  const list = document.getElementById("goal-manage-list");
+  list.innerHTML = "";
+  data.goals.forEach((g) => {
+    const li = document.createElement("li");
+    const main = document.createElement("span");
+    main.className = "manage-main";
+    main.textContent = g.label;
+    const sub = document.createElement("span");
+    sub.className = "manage-sub";
+    sub.textContent = `${yen(g.saved)} / ${yen(g.target)}`;
+    const del = document.createElement("button");
+    del.className = "icon-btn";
+    del.textContent = "🗑️";
+    del.addEventListener("click", () => {
+      if (!confirm(`目標「${g.label}」を削除しますか?`)) return;
+      data.goals = data.goals.filter((x) => x.id !== g.id);
+      saveData();
+      renderGoalManage();
+      showToast("目標を削除しました");
+    });
+    li.appendChild(main);
+    li.appendChild(sub);
+    li.appendChild(del);
+    list.appendChild(li);
+  });
+}
+
+document.getElementById("goal-add-btn").addEventListener("click", () => {
+  const label = document.getElementById("goal-label").value.trim();
+  const target = Math.floor(Number(document.getElementById("goal-target").value));
+  if (!label || !target || target <= 0) { showToast("名前と目標金額を入力してください"); return; }
+  data.goals.push({ id: newId(), label, target, saved: 0 });
+  saveData();
+  document.getElementById("goal-label").value = "";
+  document.getElementById("goal-target").value = "";
+  renderGoalManage();
+  showToast("目標を追加しました 🎯");
+});
 
 // ---------- 記念日カウントダウン ----------
 
@@ -707,6 +916,45 @@ function renderYearHighlights(records) {
 
 let selectedCat = CATEGORIES[0].id;
 
+// 記録フォームの写真の状態
+// pendingPhoto: null=変更なし / ""=削除する / dataURL=新しい写真に差し替え
+let pendingPhoto = null;
+
+function showPhotoPreview(dataUrl) {
+  const wrap = document.getElementById("photo-preview");
+  if (dataUrl) {
+    document.getElementById("photo-preview-img").src = dataUrl;
+    wrap.hidden = false;
+    document.getElementById("photo-add-btn").textContent = "📷 写真を変える";
+  } else {
+    wrap.hidden = true;
+    document.getElementById("photo-preview-img").removeAttribute("src");
+    document.getElementById("photo-add-btn").textContent = "📷 写真を選ぶ";
+  }
+}
+
+document.getElementById("photo-add-btn").addEventListener("click", () => {
+  document.getElementById("photo-input").click();
+});
+
+document.getElementById("photo-input").addEventListener("change", async (ev) => {
+  const file = ev.target.files[0];
+  ev.target.value = "";
+  if (!file) return;
+  try {
+    const dataUrl = await fileToDataUrl(file);
+    pendingPhoto = dataUrl;
+    showPhotoPreview(dataUrl);
+  } catch (e) {
+    showToast("写真を読み込めませんでした");
+  }
+});
+
+document.getElementById("photo-remove-btn").addEventListener("click", () => {
+  pendingPhoto = "";           // 保存時に削除する印
+  showPhotoPreview(null);
+});
+
 function buildCatChips() {
   const wrap = document.getElementById("cat-chips");
   wrap.innerHTML = "";
@@ -741,9 +989,11 @@ function resetAddForm() {
   document.getElementById("input-date").value = todayStr();
   selectedCat = CATEGORIES[0].id;
   updateCatChips();
+  pendingPhoto = null;
+  showPhotoPreview(null);
 }
 
-function startEdit(id) {
+async function startEdit(id) {
   const r = data.records.find((x) => x.id === id);
   if (!r) return;
   editingId = id;
@@ -756,6 +1006,13 @@ function startEdit(id) {
   document.getElementById("input-memo").value = r.memo;
   selectedCat = r.cat;
   updateCatChips();
+  // 既存の写真を読み込んで表示(あれば)
+  pendingPhoto = null;
+  showPhotoPreview(null);
+  if (r.photo) {
+    const dataUrl = await getPhoto(r.id);
+    if (dataUrl && editingId === id) showPhotoPreview(dataUrl);
+  }
 }
 
 document.getElementById("cancel-edit-btn").addEventListener("click", () => {
@@ -763,7 +1020,19 @@ document.getElementById("cancel-edit-btn").addEventListener("click", () => {
   showView("view-history");
 });
 
-document.getElementById("save-btn").addEventListener("click", () => {
+// 記録に対して、選ばれた写真の追加・差し替え・削除を反映する
+async function applyPendingPhoto(r) {
+  if (pendingPhoto === null) return;   // 変更なし
+  if (pendingPhoto === "") {           // 削除
+    await deletePhoto(r.id);
+    delete r.photo;
+  } else {                             // 追加・差し替え
+    await savePhoto(r.id, pendingPhoto);
+    r.photo = true;
+  }
+}
+
+document.getElementById("save-btn").addEventListener("click", async () => {
   const amount = Math.floor(Number(document.getElementById("input-amount").value));
   const date = document.getElementById("input-date").value;
   const memo = document.getElementById("input-memo").value.trim();
@@ -782,17 +1051,20 @@ document.getElementById("save-btn").addEventListener("click", () => {
   if (editingId) {
     const r = data.records.find((x) => x.id === editingId);
     Object.assign(r, { amount, date, memo, cat: selectedCat });
+    await applyPendingPhoto(r);
     saveData();
     showToast("記録を更新しました ✏️");
     editingId = null;
     resetAddForm();
     showView("view-history");
   } else {
-    data.records.push({
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    const r = {
+      id: newId(),
       date, amount, memo,
       cat: selectedCat,
-    });
+    };
+    data.records.push(r);
+    await applyPendingPhoto(r);
     saveData();
 
     // マイルストーン達成チェック
@@ -825,18 +1097,92 @@ function shiftMonth(delta) {
 document.getElementById("month-prev").addEventListener("click", () => shiftMonth(-1));
 document.getElementById("month-next").addEventListener("click", () => shiftMonth(1));
 
+// 検索・絞り込みの状態
+let searchText = "";
+let filterCats = new Set();
+
+const searchInput = document.getElementById("history-search");
+searchInput.addEventListener("input", () => {
+  searchText = searchInput.value.trim().toLowerCase();
+  renderHistory();
+});
+
+document.getElementById("filter-toggle-btn").addEventListener("click", () => {
+  const panel = document.getElementById("filter-panel");
+  panel.hidden = !panel.hidden;
+});
+
+document.getElementById("filter-clear-btn").addEventListener("click", () => {
+  filterCats.clear();
+  searchText = "";
+  searchInput.value = "";
+  buildFilterChips();
+  updateFilterToggle();
+  renderHistory();
+});
+
+function buildFilterChips() {
+  const wrap = document.getElementById("filter-chips");
+  wrap.innerHTML = "";
+  CATEGORIES.forEach((c) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cat-chip" + (filterCats.has(c.id) ? " selected" : "");
+    btn.textContent = `${c.emoji} ${c.label}`;
+    btn.addEventListener("click", () => {
+      if (filterCats.has(c.id)) filterCats.delete(c.id);
+      else filterCats.add(c.id);
+      buildFilterChips();
+      updateFilterToggle();
+      renderHistory();
+    });
+    wrap.appendChild(btn);
+  });
+}
+
+function updateFilterToggle() {
+  document.getElementById("filter-toggle-btn").classList.toggle("active", filterCats.size > 0);
+}
+
+// 検索・絞り込みが有効か
+function isFiltering() {
+  return searchText !== "" || filterCats.size > 0;
+}
+
+function matchesFilter(r) {
+  if (filterCats.size > 0 && !filterCats.has(r.cat)) return false;
+  if (searchText) {
+    const hay = (r.memo + " " + catById(r.cat).label).toLowerCase();
+    if (!hay.includes(searchText)) return false;
+  }
+  return true;
+}
+
 function renderHistory() {
   const [y, m] = viewMonth.split("-").map(Number);
   document.getElementById("month-label").textContent = `${y}年${m}月`;
 
-  const records = sortedRecords().filter((r) => r.date.startsWith(viewMonth));
+  const filtering = isFiltering();
+  // 通常は表示中の月だけ。検索・絞り込み中は全期間から探す。
+  let records = sortedRecords();
+  records = filtering ? records.filter(matchesFilter) : records.filter((r) => r.date.startsWith(viewMonth));
+
   document.getElementById("month-total").textContent =
-    records.length ? `${yen(sumAmount(records))} / ${records.length}回` : "";
+    (!filtering && records.length) ? `${yen(sumAmount(records))} / ${records.length}回` : "";
+
+  const summary = document.getElementById("search-summary");
+  if (filtering) {
+    summary.hidden = false;
+    summary.textContent = `全期間の検索結果: ${records.length}件・${yen(sumAmount(records))}`;
+  } else {
+    summary.hidden = true;
+  }
 
   const list = document.getElementById("history-list");
   const empty = document.getElementById("history-empty");
   list.innerHTML = "";
   empty.hidden = records.length > 0;
+  empty.textContent = filtering ? "条件に合う記録がありません" : "この月の記録はありません";
 
   let lastDate = "";
   records.forEach((r) => {
@@ -846,12 +1192,26 @@ function renderHistory() {
       const w = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
       const header = document.createElement("li");
       header.className = "date-header";
-      header.textContent = `${d.getMonth() + 1}/${d.getDate()} (${w})`;
+      // 検索中は年も表示(全期間なので何年か分かるように)
+      header.textContent = filtering
+        ? `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} (${w})`
+        : `${d.getMonth() + 1}/${d.getDate()} (${w})`;
       list.appendChild(header);
     }
     list.appendChild(recordRow(r, true));
   });
 }
+
+// ---------- 写真の拡大表示 ----------
+
+function openPhotoViewer(dataUrl) {
+  document.getElementById("photo-viewer-img").src = dataUrl;
+  document.getElementById("photo-viewer").hidden = false;
+}
+document.getElementById("photo-viewer").addEventListener("click", () => {
+  document.getElementById("photo-viewer").hidden = true;
+  document.getElementById("photo-viewer-img").removeAttribute("src");
+});
 
 function recordRow(r, withActions) {
   const c = catById(r.cat);
@@ -869,6 +1229,20 @@ function recordRow(r, withActions) {
     `<span class="record-amount">${yen(r.amount)}</span>`;
   li.querySelector(".record-meta").textContent = meta;
 
+  // 写真サムネイル(あれば絵文字と差し替え。タップで拡大)
+  if (r.photo) {
+    getPhoto(r.id).then((dataUrl) => {
+      if (!dataUrl) return;
+      const img = document.createElement("img");
+      img.className = "record-thumb";
+      img.src = dataUrl;
+      img.alt = "記録の写真";
+      img.addEventListener("click", (ev) => { ev.stopPropagation(); openPhotoViewer(dataUrl); });
+      const emoji = li.querySelector(".record-emoji");
+      if (emoji) emoji.replaceWith(img);
+    });
+  }
+
   if (withActions) {
     const actions = document.createElement("span");
     actions.className = "record-actions";
@@ -883,6 +1257,7 @@ function recordRow(r, withActions) {
     delBtn.textContent = "🗑️";
     delBtn.addEventListener("click", () => {
       if (confirm(`${c.label} ${yen(r.amount)} の記録を削除しますか?`)) {
+        if (r.photo) deletePhoto(r.id);
         data.records = data.records.filter((x) => x.id !== r.id);
         saveData();
         renderHistory();
@@ -904,6 +1279,7 @@ function renderSettings() {
   document.getElementById("set-oshi-emoji").value = data.oshi.emoji;
   document.getElementById("set-oshi-color").value = data.oshi.color;
   document.getElementById("set-budget").value = data.budget || "";
+  renderGoalManage();
   renderEventManage();
   renderRecurringManage();
 }
@@ -931,9 +1307,12 @@ document.getElementById("settings-save-btn").addEventListener("click", () => {
   showView("view-home");
 });
 
-// バックアップ(書き出し)
-document.getElementById("export-btn").addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+// バックアップ(書き出し)。写真も一緒に書き出す
+document.getElementById("export-btn").addEventListener("click", async () => {
+  showToast("バックアップを準備中…");
+  const photos = await getAllPhotos();
+  const payload = Object.assign({}, data, { photos });
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   const d = new Date();
@@ -952,12 +1331,19 @@ document.getElementById("import-file").addEventListener("change", (ev) => {
   const file = ev.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const parsed = JSON.parse(reader.result);
       if (!parsed || !Array.isArray(parsed.records)) throw new Error("形式が違います");
       if (!confirm("今のデータを読み込んだ内容で置き換えます。よろしいですか?")) return;
+      const photos = parsed.photos || {};
+      delete parsed.photos;
       data = Object.assign(defaultData(), parsed);
+      // 写真をIndexedDBに復元(古い写真は一度消してから入れ直す)
+      await clearAllPhotos();
+      for (const id of Object.keys(photos)) {
+        await savePhoto(id, photos[id]);
+      }
       saveData();
       applyTheme();
       showToast("データを読み込みました ✅");
@@ -976,6 +1362,7 @@ document.getElementById("clear-btn").addEventListener("click", () => {
   if (!confirm("本当に削除してよろしいですか?(バックアップの書き出しをおすすめします)")) return;
   data = defaultData();
   saveData();
+  clearAllPhotos();
   applyTheme();
   resetAddForm();
   showToast("データを削除しました");
@@ -1012,6 +1399,7 @@ function launchConfetti() {
 applyTheme();
 buildCatChips();
 buildRecCatOptions();
+buildFilterChips();
 resetAddForm();
 applyRecurring(); // 月が変わっていたら定期支出を記録
 renderHome();

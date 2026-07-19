@@ -14,11 +14,14 @@
 
 - 素のHTML/CSS/JavaScript(ビルド不要)
 - データは localStorage(キー: `fave.v1`)に保存。書き出し/読み込みでJSONバックアップ可
+- 写真だけは容量の都合で IndexedDB(DB名 `fave-photos`)に record.id をキーに保存。
+  記録側は `photo: true` フラグのみ持つ。バックアップJSONには `photos` として同梱される
 - `index.html` / `style.css` / `app.js` が本体
 - 画面: ホーム / きろく / りれき / せってい + 年間まとめ(ホームの「🎊 年間まとめを見る」から)
 - 機能: 軍資金・マイルストーン・月別/年間グラフ・記念日カウントダウン・
   定期支出の自動記録(月替わりに自動追記)・まとめ画像シェア(Canvas生成、
-  スマホは共有シート/PCはPNGダウンロード)
+  スマホは共有シート/PCはPNGダウンロード)・目標貯金(進捗バー+入金モーダル)・
+  履歴の検索/カテゴリ絞り込み(有効時は全期間から検索)・写真つき記録
 - `manifest.json` / `icon.svg` — スマホの「ホーム画面に追加」用
 - `serve.js` — 動作確認用の簡易サーバー(`node serve.js` → http://localhost:8735)
 

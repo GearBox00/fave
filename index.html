@@ -28,6 +28,13 @@
       <button class="share-btn" id="share-month-btn">📸 今月のまとめ画像</button>
     </div>
 
+    <div class="card" id="goals-card" hidden>
+      <div class="card-title-row">
+        <h2>目標貯金</h2>
+      </div>
+      <div id="goal-list"></div>
+    </div>
+
     <div class="card" id="events-card" hidden>
       <div class="card-title-row">
         <h2>カウントダウン</h2>
@@ -154,6 +161,16 @@
       <label class="field-label" for="input-memo">メモ(任意)</label>
       <input type="text" id="input-memo" placeholder="例: アクスタ2個、チェキ会">
 
+      <label class="field-label">写真(任意)</label>
+      <div class="photo-field">
+        <button type="button" class="photo-add-btn" id="photo-add-btn">📷 写真を選ぶ</button>
+        <input type="file" id="photo-input" accept="image/*" hidden>
+        <div class="photo-preview" id="photo-preview" hidden>
+          <img id="photo-preview-img" alt="選んだ写真">
+          <button type="button" class="photo-remove-btn" id="photo-remove-btn">✕</button>
+        </div>
+      </div>
+
       <button class="primary-btn" id="save-btn">推しに愛を記録する 💖</button>
       <button class="ghost-btn" id="cancel-edit-btn" hidden>編集をやめる</button>
     </div>
@@ -170,6 +187,18 @@
         </div>
         <button class="month-btn" id="month-next">▶</button>
       </div>
+
+      <div class="search-row">
+        <input type="search" id="history-search" placeholder="🔍 メモやカテゴリで探す" autocomplete="off">
+        <button class="filter-toggle-btn" id="filter-toggle-btn">絞り込み</button>
+      </div>
+      <div class="filter-panel" id="filter-panel" hidden>
+        <p class="filter-caption">検索・絞り込み中は、月をまたいで全期間から探します。</p>
+        <div class="cat-chips" id="filter-chips"></div>
+        <button class="ghost-btn filter-clear-btn" id="filter-clear-btn">絞り込みを解除</button>
+      </div>
+
+      <p class="search-summary" id="search-summary" hidden></p>
       <ul class="record-list" id="history-list"></ul>
       <p class="empty-note" id="history-empty" hidden>この月の記録はありません</p>
     </div>
@@ -196,6 +225,17 @@
 
     <div class="card">
       <button class="primary-btn" id="settings-save-btn">設定を保存する</button>
+    </div>
+
+    <div class="card">
+      <h2>目標貯金</h2>
+      <p class="help-text">「遠征のために3万円」のような目標を決めて、進捗をホームで見られます。金額を書き込むと貯まっていきます。</p>
+      <ul class="manage-list" id="goal-manage-list"></ul>
+      <label class="field-label" for="goal-label">目標の名前</label>
+      <input type="text" id="goal-label" placeholder="例: 🚄 夏の遠征">
+      <label class="field-label" for="goal-target">目標金額(円)</label>
+      <input type="number" id="goal-target" inputmode="numeric" min="1" placeholder="例: 30000">
+      <button class="ghost-btn" id="goal-add-btn">目標を追加する</button>
     </div>
 
     <div class="card">
@@ -245,6 +285,23 @@
 
 <div id="toast" hidden></div>
 <div id="chart-tooltip" hidden></div>
+
+<!-- 写真の拡大表示 -->
+<div id="photo-viewer" hidden>
+  <img id="photo-viewer-img" alt="記録の写真">
+</div>
+
+<!-- 目標貯金への入金 -->
+<div id="deposit-modal" hidden>
+  <div class="modal-card">
+    <h2 id="deposit-title">目標に貯金する</h2>
+    <p class="deposit-progress" id="deposit-progress"></p>
+    <label class="field-label" for="deposit-amount">貯金する金額(円)</label>
+    <input type="number" id="deposit-amount" inputmode="numeric" min="1" placeholder="例: 3000">
+    <button class="primary-btn" id="deposit-save-btn">貯金する 🐷</button>
+    <button class="ghost-btn" id="deposit-cancel-btn">とじる</button>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>
