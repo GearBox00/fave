@@ -21,6 +21,14 @@
   <!-- ホーム画面 -->
   <section class="view active" id="view-home">
 
+    <div class="notice-card" id="backup-notice" hidden>
+      <p class="notice-text" id="backup-notice-text"></p>
+      <div class="notice-actions">
+        <button class="notice-btn" id="backup-notice-btn">バックアップする</button>
+        <button class="notice-close" id="backup-notice-close">あとで</button>
+      </div>
+    </div>
+
     <div class="card hero-card">
       <p class="hero-label" id="hero-label">今月、推しに使えた額</p>
       <p class="hero-amount"><span id="hero-amount">¥0</span></p>
@@ -266,6 +274,7 @@
     <div class="card">
       <h2>データのバックアップ</h2>
       <p class="help-text">データはこの端末のブラウザ内だけに保存されています。ときどき書き出してバックアップしておくと安心です。</p>
+      <p class="storage-status" id="storage-status"></p>
       <button class="ghost-btn" id="export-btn">データを書き出す(保存)</button>
       <button class="ghost-btn" id="import-btn">データを読み込む(復元)</button>
       <input type="file" id="import-file" accept=".json" hidden>

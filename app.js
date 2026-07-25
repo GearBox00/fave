@@ -37,6 +37,7 @@ function defaultData() {
     events: [],         // 記念日 { id, label, date: "YYYY-MM-DD", repeat: true/false }
     recurring: [],      // 定期支出 { id, label, amount, cat, lastApplied: "YYYY-MM" }
     goals: [],          // 目標貯金 { id, label, target, saved }
+    lastBackup: "",     // 最後にバックアップした日 "YYYY-MM-DD"
   };
 }
 
@@ -57,6 +58,19 @@ function loadData() {
 
 function saveData() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+// ---------- データを消えにくくする ----------
+// ブラウザは容量が足りなくなると、古いサイトのデータを勝手に消すことがある。
+// 「このデータは消さないで」と申請しておくと、その対象から外れる。
+async function requestPersistentStorage() {
+  if (!navigator.storage || !navigator.storage.persist) return null;
+  try {
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch (e) {
+    return null;
+  }
 }
 
 let data = loadData();
@@ -279,7 +293,57 @@ function renderHome() {
   renderRecent();
   renderEvents();
   renderGoals();
+  renderBackupNotice();
 }
+
+// ---------- バックアップの促し ----------
+
+const BACKUP_INTERVAL_DAYS = 30;   // この日数を過ぎたら promptする
+let backupNoticeDismissed = false; // 「あとで」を押したらこの起動中は出さない
+
+function daysSince(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const then = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((today - then) / 86400000);
+}
+
+function renderBackupNotice() {
+  const notice = document.getElementById("backup-notice");
+  const text = document.getElementById("backup-notice-text");
+
+  // 記録がまだ少ないうちは促さない(うるさくしない)
+  if (backupNoticeDismissed || data.records.length < 5) {
+    notice.hidden = true;
+    return;
+  }
+
+  if (!data.lastBackup) {
+    notice.hidden = false;
+    text.textContent =
+      "📦 まだバックアップをしていません。記録が消えてしまわないよう、ときどき書き出しておきましょう。";
+    return;
+  }
+
+  const days = daysSince(data.lastBackup);
+  if (days >= BACKUP_INTERVAL_DAYS) {
+    notice.hidden = false;
+    text.textContent = `📦 前回のバックアップから${days}日たちました。念のため書き出しておくと安心です。`;
+  } else {
+    notice.hidden = true;
+  }
+}
+
+document.getElementById("backup-notice-close").addEventListener("click", () => {
+  backupNoticeDismissed = true;
+  document.getElementById("backup-notice").hidden = true;
+});
+
+document.getElementById("backup-notice-btn").addEventListener("click", () => {
+  showView("view-settings");
+  document.getElementById("export-btn").click();
+});
 
 // ---------- 目標貯金 ----------
 
@@ -1282,6 +1346,40 @@ function renderSettings() {
   renderGoalManage();
   renderEventManage();
   renderRecurringManage();
+  renderStorageStatus();
+}
+
+// データの保存状態(消えにくさ・最終バックアップ)を表示する
+async function renderStorageStatus() {
+  const el = document.getElementById("storage-status");
+  if (!el) return;
+
+  const lines = [];
+  let cls = "";
+
+  // 永続化されているか
+  let persisted = null;
+  if (navigator.storage && navigator.storage.persisted) {
+    try { persisted = await navigator.storage.persisted(); } catch (e) { persisted = null; }
+  }
+  if (persisted === true) {
+    lines.push("🔒 このデータは消えないよう保護されています");
+    cls = "ok";
+  } else if (persisted === false) {
+    lines.push("⚠️ 保護が有効になっていません。ホーム画面に追加すると有効になりやすくなります");
+    cls = "warn";
+  }
+
+  // 最終バックアップ
+  if (data.lastBackup) {
+    const days = daysSince(data.lastBackup);
+    lines.push(`最後のバックアップ: ${data.lastBackup.replaceAll("-", "/")}(${days === 0 ? "今日" : days + "日前"})`);
+  } else {
+    lines.push("バックアップはまだ書き出されていません");
+  }
+
+  el.className = "storage-status" + (cls ? " " + cls : "");
+  el.textContent = lines.join(" / ");
 }
 
 // 定期支出のカテゴリ選択肢を用意する
@@ -1319,6 +1417,11 @@ document.getElementById("export-btn").addEventListener("click", async () => {
   a.download = `fave-backup-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
+  data.lastBackup = todayStr();
+  saveData();
+  backupNoticeDismissed = true;
+  document.getElementById("backup-notice").hidden = true;
+  renderStorageStatus();
   showToast("バックアップを書き出しました 📦");
 });
 
@@ -1410,3 +1513,6 @@ if ("serviceWorker" in navigator) {
     // 登録に失敗してもアプリ自体は普通に使える
   });
 }
+
+// 記録が消えないよう、保存データの保護をブラウザに申請する
+requestPersistentStorage().then(() => renderStorageStatus());
